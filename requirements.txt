@@ -1,0 +1,12 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dipendenze Python.
+#
+# A RUNTIME il honeypot non ha NESSUNA dipendenza esterna: usa solo asyncio
+# e socket dalla stdlib. Sul Raspberry Pi 4 non serve installare nulla.
+#
+# Le dipendenze qui elencate servono SOLO per il tool offline
+# extract_recordings.py, che gira sul PC di sviluppo per (ri)generare i
+# template binari nella cartella recorded/.
+# ─────────────────────────────────────────────────────────────────────────────
+
+dpkt>=1.9.8       # parsing PCAP/PCAPNG per extract_recordings.py

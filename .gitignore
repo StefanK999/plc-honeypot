@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.Python
+build/
+dist/
+
+# Virtual envs
+honeypot/
+venv/
+
+# Local secrets / configuration
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs e backup
+*.log
+*.bak
+
+# PCAP locali (non andrebbero committati, potenzialmente sensibili)
+*.pcap
+*.pcapng

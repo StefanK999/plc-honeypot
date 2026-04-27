@@ -1,0 +1,40 @@
+# systemd unit file per avvio automatico su Raspberry Pi.
+#
+# Installazione:
+#   sudo cp plc-honeypot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now plc-honeypot
+#
+
+
+[Unit]
+Description=PLC Honeypot Siemens S7-1200
+Documentation=https://github.com/StefanK999/plc-honeypot.git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/plc-honeypot
+ExecStart=/usr/bin/python3 /home/pi/plc-honeypot/plc_honeypot.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Capability per bind a porte privilegiate (102, 502) e raw socket (DCP)
+# senza dover girare come root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/home/pi/plc-honeypot
+
+[Install]
+WantedBy=multi-user.target
