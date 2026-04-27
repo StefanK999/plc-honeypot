@@ -165,7 +165,7 @@ class S7Connection:
 
         if first == 0x32 and self.identity.enable_s7comm:
             response = s7comm.handle(payload, self.identity)
-        elif first == 0x72 and self.identity.enable_s7comm_plus:
+        elif first == 0x72 and self.identity.enable_s7plus:
             response = s7comm_plus.handle(payload, self.identity)
         else:
             log.debug(f"  [S7] payload byte0=0x{first:02X} non riconosciuto")
@@ -229,7 +229,7 @@ class ModbusConnection:
 async def main_async(identity):
     servers = []
 
-    if identity.enable_s7comm or identity.enable_s7comm_plus:
+    if identity.enable_s7classic or identity.enable_s7plus:
         s7 = await asyncio.start_server(
             lambda r, w: S7Connection(r, w, identity).serve(),
             host=identity.listen_host, port=identity.s7_port,
