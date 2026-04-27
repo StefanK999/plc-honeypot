@@ -269,8 +269,8 @@ def main():
     log.info(f"    Firmware: {DEFAULT_IDENTITY.firmware.decode().strip()}")
     log.info(f"    Serial  : {DEFAULT_IDENTITY.serial_number.decode().strip()}")
     log.info(f"    Layers  : "
-             f"s7comm={'ON' if DEFAULT_IDENTITY.enable_s7comm else 'OFF'}  "
-             f"S7+={'ON' if DEFAULT_IDENTITY.enable_s7comm_plus else 'OFF'}  "
+             f"s7comm={'ON' if DEFAULT_IDENTITY.enable_s7classic else 'OFF'}  "
+             f"S7+={'ON' if DEFAULT_IDENTITY.enable_s7plus else 'OFF'}  "
              f"Modbus={'ON' if DEFAULT_IDENTITY.enable_modbus else 'OFF'}  "
              f"DCP={'ON' if DEFAULT_IDENTITY.enable_dcp else 'OFF'}")
     log.info("─" * 70)
