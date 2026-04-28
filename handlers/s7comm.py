@@ -18,7 +18,7 @@ from __future__ import annotations
 import struct
 import logging
 from typing import Optional
-
+import scan_logger
 from identity import PLCIdentity
 
 log = logging.getLogger("honeypot.s7comm")
@@ -227,6 +227,10 @@ def handle(payload: bytes, identity: PLCIdentity) -> Optional[bytes]:
     # ── Setup Communication (function 0xF0) ──────────────────────────────────
     if rosctr == 0x01 and param[0] == 0xF0:
         log.info(f"S7 Setup Comm, PDU#{pdu_ref.hex()} → ACK")
+        scan_logger.log_event(
+            layer="s7", event_type="setup_communication",
+            details={"pdu_ref": pdu_ref.hex()},
+        )
         return build_setup_response(pdu_ref)
 
     # ── UserData / Read SZL (ROSCTR=0x07) ────────────────────────────────────
@@ -244,6 +248,14 @@ def handle(payload: bytes, identity: PLCIdentity) -> Optional[bytes]:
             szl_id    = struct.unpack(">H", data[4:6])[0]
             szl_index = struct.unpack(">H", data[6:8])[0]
             szl_id_base = szl_id & 0x0FFF      # alcuni client usano flag negli high bit
+
+            # ── Log dell'evento ──────────────────────────────────────────────
+            scan_logger.log_event(
+                layer="s7", event_type="szl_request",
+                details={"function": f"SZL_0x{szl_id_base:04X}",
+                         "szl_index": f"0x{szl_index:04X}",
+                         "pdu_ref": pdu_ref.hex()},
+            )
 
             handler = SZL_HANDLERS.get(szl_id_base)
             if handler:

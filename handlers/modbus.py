@@ -19,7 +19,7 @@ from __future__ import annotations
 import struct
 import logging
 from typing import Optional
-
+import scan_logger
 from identity import PLCIdentity
 
 log = logging.getLogger("honeypot.modbus")
@@ -102,6 +102,12 @@ def handle(frame: bytes, identity: PLCIdentity) -> Optional[bytes]:
         return None
 
     log.info(f"Modbus FC=0x{fc:02X} TID={tid.hex()}")
+
+    # ── Log dell'evento ──────────────────────────────────────────────────────
+    scan_logger.log_event(
+        layer="modbus", event_type="request",
+        details={"function": f"0x{fc:02X}", "tid": tid.hex()},
+    )
 
     if fc == 0x03:
         return _handle_read_holding(tid, uid, fc, body)

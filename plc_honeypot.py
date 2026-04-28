@@ -18,6 +18,7 @@ import sys
 import threading
 from pathlib import Path
 import random
+import scan_logger
 
 # Path locale per import handlers/identity senza pacchetto installato
 HERE = Path(__file__).parent.resolve()
@@ -89,36 +90,47 @@ class S7Connection:
 
     async def serve(self):
         log.info(f"╭─ [S7] Connessione da {self.peer[0]}:{self.peer[1]}")
-        try:
-            while True:
-                hdr = await self._read_exact(4)
-                if hdr is None:
-                    break
-                if hdr[0] != 0x03:
-                    log.warning(f"  byte 0 non TPKT (0x{hdr[0]:02X}), chiudo")
-                    break
 
-                total_len = struct.unpack(">H", hdr[2:4])[0]
-                if total_len < 4 or total_len > 65535:
-                    break
-                rest = await self._read_exact(total_len - 4)
-                if rest is None:
-                    break
-
-                full_msg = bytes(hdr) + rest
-                await self._handle_tpkt(full_msg)
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            log.exception(f"  errore: {e}")
-        finally:
-            self.writer.close()
+        # Peer nel ContextVar di scan_logger
+        with scan_logger.peer_context(self.peer[0], self.peer[1]):
+            await scan_logger.log_event_async(
+                layer="tcp", event_type="connection_open",
+                details={"port": "s7"},
+            )
             try:
-                await self.writer.wait_closed()
-            except Exception:
+                while True:
+                    hdr = await self._read_exact(4)
+                    if hdr is None:
+                        break
+                    if hdr[0] != 0x03:
+                        log.warning(f"  byte 0 non TPKT (0x{hdr[0]:02X}), chiudo")
+                        break
+
+                    total_len = struct.unpack(">H", hdr[2:4])[0]
+                    if total_len < 4 or total_len > 65535:
+                        break
+                    rest = await self._read_exact(total_len - 4)
+                    if rest is None:
+                        break
+
+                    full_msg = bytes(hdr) + rest
+                    await self._handle_tpkt(full_msg)
+
+            except asyncio.CancelledError:
                 pass
-            log.info(f"╰─ [S7] Chiuso {self.peer[0]}:{self.peer[1]}")
+            except Exception as e:
+                log.exception(f"  errore: {e}")
+            finally:
+                await scan_logger.log_event_async(
+                    layer="tcp", event_type="connection_close",
+                    details={"port": "s7"},
+                )
+                self.writer.close()
+                try:
+                    await self.writer.wait_closed()
+                except Exception:
+                    pass
+                log.info(f"╰─ [S7] Chiuso {self.peer[0]}:{self.peer[1]}")
 
     async def _read_exact(self, n: int):
         try:
@@ -202,32 +214,41 @@ class ModbusConnection:
 
     async def serve(self):
         log.info(f"╭─ [Modbus] Connessione da {self.peer[0]}:{self.peer[1]}")
-        try:
-            while True:
-                # MBAP header: TID(2) ProtoID(2) Length(2) UnitID(1) = 7 byte
-                hdr = await self.reader.readexactly(7)
-                length = struct.unpack(">H", hdr[4:6])[0]
-                if length < 1 or length > 256:
-                    break
-                pdu = await self.reader.readexactly(length - 1)
-                frame = hdr + pdu
 
-                response = modbus.handle(frame, self.identity)
-                if response:
-                    self.writer.write(response)
-                    await self.writer.drain()
-
-        except asyncio.IncompleteReadError:
-            pass
-        except Exception as e:
-            log.exception(f"  errore: {e}")
-        finally:
-            self.writer.close()
+        with scan_logger.peer_context(self.peer[0], self.peer[1]):
+            await scan_logger.log_event_async(
+                layer="tcp", event_type="connection_open",
+                details={"port": "modbus"},
+            )
             try:
-                await self.writer.wait_closed()
-            except Exception:
+                while True:
+                    hdr = await self.reader.readexactly(7)
+                    length = struct.unpack(">H", hdr[4:6])[0]
+                    if length < 1 or length > 256:
+                        break
+                    pdu = await self.reader.readexactly(length - 1)
+                    frame = hdr + pdu
+
+                    response = modbus.handle(frame, self.identity)
+                    if response:
+                        self.writer.write(response)
+                        await self.writer.drain()
+
+            except asyncio.IncompleteReadError:
                 pass
-            log.info(f"╰─ [Modbus] Chiuso {self.peer[0]}:{self.peer[1]}")
+            except Exception as e:
+                log.exception(f"  errore: {e}")
+            finally:
+                await scan_logger.log_event_async(
+                    layer="tcp", event_type="connection_close",
+                    details={"port": "modbus"},
+                )
+                self.writer.close()
+                try:
+                    await self.writer.wait_closed()
+                except Exception:
+                    pass
+                log.info(f"╰─ [Modbus] Chiuso {self.peer[0]}:{self.peer[1]}")
 
 
 # ─── Server bootstrap (asyncio main) ─────────────────────────────────────────
@@ -279,6 +300,13 @@ def main():
              f"Modbus={'ON' if DEFAULT_IDENTITY.enable_modbus else 'OFF'}  "
              f"DCP={'ON' if DEFAULT_IDENTITY.enable_dcp else 'OFF'}")
     log.info("─" * 70)
+
+    # Configurazione scan_logger
+    scan_logger.configure(
+        redis_url=DEFAULT_IDENTITY.redis_url or None,
+        fallback_file=DEFAULT_IDENTITY.scan_log_fallback_file,
+        stream_maxlen=DEFAULT_IDENTITY.scan_log_stream_maxlen,
+    )
 
     # PROFINET DCP gira in thread separato (raw socket bloccante)
     dcp_stop = threading.Event()

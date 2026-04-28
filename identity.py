@@ -118,5 +118,10 @@ class PLCIdentity:
     enable_modbus    : bool = _env_bool("ENABLE_MODBUS",    True)
     enable_dcp       : bool = _env_bool("ENABLE_DCP",       True)
 
+    # ── Telemetria / scan logger ─────────────────────────────────────────────
+    redis_url : str = "redis://127.0.0.1:6379/0"
+    scan_log_fallback_file : str = "scan_log.jsonl"
+    scan_log_stream_maxlen : int = 100_000
+
 
 DEFAULT_IDENTITY = PLCIdentity()

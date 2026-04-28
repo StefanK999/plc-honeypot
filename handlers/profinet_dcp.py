@@ -21,7 +21,7 @@ import struct
 import logging
 import threading
 from typing import Optional
-
+import scan_logger
 from identity import PLCIdentity
 
 # AF_PACKET è disponibile solo su Linux. Su Windows/macOS il modulo si
@@ -199,6 +199,15 @@ def _process_frame(sk: socket.socket, frame: bytes,
     # Identify Request: ServiceID=0x05, ServiceType=0x00
     if service_id == 0x05 and service_type == 0x00:
         log.info(f"DCP Identify Request da {src_mac.hex(':')} (xid={xid.hex()})")
+
+        # Log dell'evento (sync)
+        with scan_logger.peer_context(f"mac:{src_mac.hex(':')}", 0):
+            scan_logger.log_event_sync(
+                layer="dcp", event_type="identify_request",
+                details={"src_mac": src_mac.hex(":"),
+                         "xid": xid.hex()},
+            )
+
         response = build_identify_response(
             src_mac, our_mac, xid, frame_id, identity
         )

@@ -9,4 +9,5 @@
 # template binari nella cartella recorded/.
 # ─────────────────────────────────────────────────────────────────────────────
 
-dpkt>=1.9.8       # parsing PCAP/PCAPNG per extract_recordings.py
+dpkt>=1.9.8       # parsing PCAP per extract_recordings.py (offline)
+redis>=5.0.0      # backend per scan_logger.py (runtime)

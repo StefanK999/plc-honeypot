@@ -15,7 +15,7 @@ import struct
 import logging
 from pathlib import Path
 from typing import Optional
-
+import scan_logger
 from identity import PLCIdentity
 
 log = logging.getLogger("honeypot.s7comm_plus")
@@ -128,6 +128,40 @@ def handle(payload: bytes, identity: PLCIdentity) -> Optional[bytes]:
     if function_code is None:
         log.debug(f"S7+ opcode 0x{opcode:02X}: function code non estraibile")
         return None
+
+    # ── Log della richiesta S7+ ──────────────────────────────────────────────
+    log_details: dict = {
+        "opcode"     : f"0x{opcode:02X}",
+        "function"   : f"0x{function_code:04X}",
+        "session_id" : f"0x{session_id:08X}" if session_id else None,
+    }
+
+    # Estrazione stringhe identificative del client (solo per InitSession request)
+    if function_code == 0x04CA and opcode == 0x31:
+        strings = []
+        run = bytearray()
+        for b in payload[14:]:
+            if 32 <= b < 127:
+                run.append(b)
+            else:
+                if len(run) >= 5:
+                    strings.append(run.decode())
+                run = bytearray()
+        if len(run) >= 5:
+            strings.append(run.decode())
+        # Filtra il rumore: stringhe con troppi caratteri non-alfa
+        clean_strings = []
+        for s in strings:
+            alpha = sum(1 for c in s if c.isalnum() or c in '.-_:/ ')
+            if alpha / max(len(s), 1) > 0.6:
+                clean_strings.append(s)
+        if clean_strings:
+            log_details["client_strings"] = clean_strings[:10]
+
+    scan_logger.log_event(
+        layer="s7plus", event_type="request",
+        details=log_details,
+    )
 
     tpl_key = (response_outer, function_code)
     if tpl_key not in TEMPLATES:
