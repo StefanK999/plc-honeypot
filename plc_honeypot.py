@@ -146,6 +146,22 @@ class S7Connection:
 
         # ── Connection Request → Connection Confirm ──────────────────────────
         if view.pdu_type == 0xE0:
+            # Estrai TSAP called per decidere se accettare o no
+            tsap_called = None
+            for code, plen, val in view.parameters:
+                if code == 0xC2:
+                    tsap_called = val
+                    break
+            
+            # TSAP rack-and-slot: 02:XX. Accetta solo slot 0 (la CPU).
+            # TSAP testuali (SIMATIC-ROOT-ES) sono S7+, accettali sempre.
+            if tsap_called and len(tsap_called) == 2 and tsap_called[0] == 0x02:
+                slot = tsap_called[1]
+                if slot != 0x00 and slot != 0x01:  # 0x01 = "PG/PC" anche valida
+                    # Rifiuto: rispondo con DR (Disconnect Request) o chiudo TCP
+                    log.info(f"  [S7] TSAP rack-slot {slot} non valido (non CPU), chiudo")
+                    self.writer.close()
+                    return
             cc = cotp_h.build_cc_from_raw(cotp_data, our_src_ref=0x000C)
             await self._send(wrap_tpkt(cc))
             self.cotp_open = True
