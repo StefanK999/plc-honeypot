@@ -35,7 +35,12 @@ TEMPLATES = {
     (0x32, 0x0542): "s7comm_plus_setvarsubstreamed_response",
     (0x20, 0x0586): "s7comm_plus_ip_0586_response",
     (0x20, 0x04D4): "s7comm_plus_ip_04D4_response",
-    (0x20, 0x04BB): "s7comm_plus_ip_04BB_response",
+    #(0x20, 0x04BB): "s7comm_plus_ip_04BB_response",
+    #The honeypot disables S7+ Explore responses (function 0x04BB) by default to
+    #prevent scanners from enumerating phantom modules of the captured PLC's
+    #backplane. To re-enable for scenarios where you want to advertise a
+    #specific module configuration, add the entry to TEMPLATES in
+    #handlers/s7comm_plus.py and provide a matching template file in recorded/ (see s7comm_plus_ip_04BB_response.bin for an example).
 }
 
 

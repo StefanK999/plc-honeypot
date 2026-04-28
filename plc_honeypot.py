@@ -17,6 +17,7 @@ import struct
 import sys
 import threading
 from pathlib import Path
+import random
 
 # Path locale per import handlers/identity senza pacchetto installato
 HERE = Path(__file__).parent.resolve()
@@ -175,7 +176,11 @@ class S7Connection:
             return
 
         if self.identity.add_jitter_ms > 0:
-            await asyncio.sleep(self.identity.add_jitter_ms / 1000.0)
+            jitter = random.uniform(
+                self.identity.add_jitter_ms * 0.3,
+                self.identity.add_jitter_ms * 3.0,
+            )
+            await asyncio.sleep(jitter / 1000.0)
 
         cotp_msg = cotp_h.build_dt(response, eot=True)
         await self._send(wrap_tpkt(cotp_msg))
