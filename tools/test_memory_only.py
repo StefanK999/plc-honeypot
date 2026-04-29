@@ -117,22 +117,37 @@ async def main():
     print("\n[7] Notifica pubsub on write")
     pubsub = r.pubsub()
     await pubsub.subscribe("plc:memory:writes")
-    await asyncio.sleep(0.1)   # lascia che la sub si stabilisca
 
+    # Drena il messaggio di conferma "subscribe": è il primo che arriva sempre
+    # quando ci si iscrive, e va consumato per assicurarci che la sub sia attiva
+    # PRIMA della publish.
+    await asyncio.wait_for(
+        pubsub.get_message(ignore_subscribe_messages=False, timeout=2.0),
+        timeout=2.0,
+    )
+
+    # Adesso siamo certi che il subscribe è registrato lato Redis.
     await mm.write_word("DB1.DBW40", 0xCAFE)
-    await asyncio.sleep(0.1)
 
-    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+    # Aspetta il messaggio dati (con timeout generoso)
+    msg = None
+    deadline = asyncio.get_event_loop().time() + 2.0
+    while asyncio.get_event_loop().time() < deadline:
+        msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.5)
+        if msg is not None:
+            break
+
     if msg is None:
-        print(f"  ✗ Nessuna notifica ricevuta")
+        print(f"  ✗ Nessuna notifica ricevuta entro 2s")
         assert False, "atteso evento pubsub"
-    else:
-        import json
-        ev = json.loads(msg["data"])
-        ok = (ev["area"] == "DATA_BLOCK" and ev["db_number"] == 1
-              and ev["byte_offset"] == 40 and ev["length"] == 2)
-        print(f"  {'✓' if ok else '✗'} evento ricevuto: {ev}")
-        assert ok
+
+    import json
+    ev = json.loads(msg["data"])
+    ok = (ev["area"] == "DATA_BLOCK" and ev["db_number"] == 1
+          and ev["byte_offset"] == 40 and ev["length"] == 2)
+    print(f"  {'✓' if ok else '✗'} evento ricevuto: {ev}")
+    assert ok
+
     await pubsub.unsubscribe()
     await pubsub.aclose()
 

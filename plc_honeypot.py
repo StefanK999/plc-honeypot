@@ -27,6 +27,8 @@ sys.path.insert(0, str(HERE))
 from identity import DEFAULT_IDENTITY
 from handlers import cotp as cotp_h
 from handlers import s7comm, s7comm_plus, modbus, profinet_dcp
+from memory import MemoryModel
+from redis.asyncio import Redis as AsyncRedis
 
 
 # ─── Logging setup ───────────────────────────────────────────────────────────
@@ -81,10 +83,11 @@ class _CotpView:
 class S7Connection:
     """Singola connessione TCP/102, mantiene stato COTP."""
 
-    def __init__(self, reader, writer, identity):
+    def __init__(self, reader, writer, identity, memory = None):
         self.reader   = reader
         self.writer   = writer
         self.identity = identity
+        self.memory   = memory
         self.peer     = writer.get_extra_info('peername')
         self.cotp_open = False
 
@@ -245,7 +248,7 @@ class S7Connection:
         response = None
 
         if first == 0x32 and self.identity.enable_s7classic:
-            response = s7comm.handle(payload, self.identity)
+            response = s7comm.handle(payload, self.identity, self.memory)
         elif first == 0x72 and self.identity.enable_s7plus:
             response = s7comm_plus.handle(payload, self.identity)
         else:
@@ -321,6 +324,26 @@ class ModbusConnection:
 
 # ─── Server bootstrap (asyncio main) ─────────────────────────────────────────
 async def main_async(identity):
+
+    # ── Inizializzazione MemoryModel 
+    memory = None
+    if identity.redis_url:
+        try:
+            redis_mem = AsyncRedis.from_url(identity.redis_url,
+                                             decode_responses=False)
+            await redis_mem.ping()
+            memory = MemoryModel(redis_mem)
+            # Inizializzazione DB di default (saranno popolati con
+            # schema-specific values nelle iterazioni successive)
+            await memory.initialize_db(1, size_bytes=256)
+            await memory.initialize_db(2, size_bytes=64)
+            log.info(f"MemoryModel attivo (Redis {identity.redis_url}, "
+                     f"DB1=256B, DB2=64B)")
+        except Exception as e:
+            log.warning(f"MemoryModel non disponibile ({e}). "
+                        f"Read/Write Variable non risponderanno.")
+            memory = None
+
     servers = []
 
     if identity.enable_s7classic or identity.enable_s7plus:

@@ -27,7 +27,8 @@ Thumbs.db
 # Logs e backup
 *.log
 *.bak
+scan_log.json
 
 # PCAP locali (non andrebbero committati, potenzialmente sensibili)
 *.pcap
-*.pcapng
+*.pcapngscan_log.jsonl
