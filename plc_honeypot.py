@@ -146,27 +146,50 @@ class S7Connection:
 
         # ── Connection Request → Connection Confirm ──────────────────────────
         if view.pdu_type == 0xE0:
-            # Estrai TSAP called per decidere se accettare o no
-            tsap_called = None
+            # ── Strumentazione diagnostica: dumpa TSAP raw ───────────────────
+            tsap_calling_raw = None
+            tsap_called_raw  = None
+            tpdu_size_raw    = None
             for code, plen, val in view.parameters:
-                if code == 0xC2:
-                    tsap_called = val
-                    break
-            
-            # TSAP rack-and-slot: 02:XX. Accetta solo slot 0 (la CPU).
-            # TSAP testuali (SIMATIC-ROOT-ES) sono S7+, accettali sempre.
-            if tsap_called and len(tsap_called) == 2 and tsap_called[0] == 0x02:
-                slot = tsap_called[1]
-                if slot != 0x00 and slot != 0x01:  # 0x01 = "PG/PC" anche valida
-                    # Rifiuto: rispondo con DR (Disconnect Request) o chiudo TCP
-                    log.info(f"  [S7] TSAP rack-slot {slot} non valido (non CPU), chiudo")
-                    self.writer.close()
-                    return
+                if   code == 0xC1: tsap_calling_raw = val
+                elif code == 0xC2: tsap_called_raw  = val
+                elif code == 0xC0: tpdu_size_raw    = val
+
+            calling_hex = tsap_calling_raw.hex(':') if tsap_calling_raw else "?"
+            called_hex  = tsap_called_raw.hex(':')  if tsap_called_raw  else "?"
+
+            # Decodifica "umana" del CalledTSAP per leggibilità nel log:
+            # se è 2 byte numerici (es. 02:00) lo mostriamo così;
+            # se è ASCII stampabile (es. SIMATIC-ROOT-ES) lo decodifichiamo.
+            called_human = called_hex
+            if tsap_called_raw:
+                try:
+                    s = tsap_called_raw.decode('ascii')
+                    if all(32 <= ord(c) < 127 for c in s):
+                        called_human = f'"{s}"'
+                except UnicodeDecodeError:
+                    pass
+
+            log.info(f"  [S7] CR  calling={calling_hex}  called={called_human}  "
+                     f"(called_raw={called_hex})")
+
+            # Telemetria persistente
+            await scan_logger.log_event_async(
+                layer="s7",
+                event_type="cotp_connection_request",
+                details={
+                    "tsap_calling_raw" : calling_hex,
+                    "tsap_called_raw"  : called_hex,
+                    "tsap_called_human": called_human,
+                    "tpdu_size_raw"    : tpdu_size_raw.hex() if tpdu_size_raw else None,
+                    "src_ref"          : f"0x{view.src_ref:04X}",
+                },
+            )
+
+            # Comportamento invariato: rispondi con CC a tutto
             cc = cotp_h.build_cc_from_raw(cotp_data, our_src_ref=0x000C)
             await self._send(wrap_tpkt(cc))
             self.cotp_open = True
-            tsap = self._called_tsap(view)
-            log.info(f"  [S7] COTP CR → CC inviata (TSAP called: {tsap})")
             return
 
         if view.pdu_type == 0x80:
