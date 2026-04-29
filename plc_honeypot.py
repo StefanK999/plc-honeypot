@@ -158,20 +158,43 @@ class S7Connection:
             calling_hex = tsap_calling_raw.hex(':') if tsap_calling_raw else "?"
             called_hex  = tsap_called_raw.hex(':')  if tsap_called_raw  else "?"
 
-            # Decodifica "umana" del CalledTSAP per leggibilità nel log:
-            # se è 2 byte numerici (es. 02:00) lo mostriamo così;
-            # se è ASCII stampabile (es. SIMATIC-ROOT-ES) lo decodifichiamo.
+            # Decodifica "umana" del CalledTSAP per il log
             called_human = called_hex
+            is_ascii_tsap = False
             if tsap_called_raw:
                 try:
                     s = tsap_called_raw.decode('ascii')
                     if all(32 <= ord(c) < 127 for c in s):
                         called_human = f'"{s}"'
+                        is_ascii_tsap = True
                 except UnicodeDecodeError:
                     pass
 
+            # ── Decisione di accettazione ────────────────────────────────────
+            # Accetta:
+            #   • TSAP testuale (es. "SIMATIC-ROOT-ES") → S7+ TIA Portal
+            #   • TSAP rack-slot 0x__:0x00 → CPU principale (rack qualunque, slot 0)
+            # Rifiuta:
+            #   • Tutto il resto (probe rack-scan su slot != 0)
+            accept = False
+            reject_reason = None
+
+            if is_ascii_tsap:
+                accept = True
+            elif tsap_called_raw and len(tsap_called_raw) == 2:
+                rack = tsap_called_raw[0]
+                slot = tsap_called_raw[1]
+                if slot == 0x00:
+                    accept = True
+                else:
+                    reject_reason = f"slot 0x{slot:02X} non è CPU (rack 0x{rack:02X})"
+            else:
+                reject_reason = f"TSAP malformato (len={len(tsap_called_raw) if tsap_called_raw else 0})"
+
             log.info(f"  [S7] CR  calling={calling_hex}  called={called_human}  "
-                     f"(called_raw={called_hex})")
+                     f"(called_raw={called_hex})  decision="
+                     f"{'ACCEPT' if accept else 'REJECT'}"
+                     f"{' (' + reject_reason + ')' if reject_reason else ''}")
 
             # Telemetria persistente
             await scan_logger.log_event_async(
@@ -183,10 +206,16 @@ class S7Connection:
                     "tsap_called_human": called_human,
                     "tpdu_size_raw"    : tpdu_size_raw.hex() if tpdu_size_raw else None,
                     "src_ref"          : f"0x{view.src_ref:04X}",
+                    "decision"         : "accept" if accept else "reject",
+                    "reject_reason"    : reject_reason,
                 },
             )
 
-            # Comportamento invariato: rispondi con CC a tutto
+            if not accept:
+                # Chiudi TCP senza CC. Equivalente in pratica a un "modulo non presente".
+                self.writer.close()
+                return
+
             cc = cotp_h.build_cc_from_raw(cotp_data, our_src_ref=0x000C)
             await self._send(wrap_tpkt(cc))
             self.cotp_open = True
