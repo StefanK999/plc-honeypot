@@ -248,7 +248,7 @@ class S7Connection:
         response = None
 
         if first == 0x32 and self.identity.enable_s7classic:
-            response = s7comm.handle(payload, self.identity, self.memory)
+            response = await s7comm.handle(payload, self.identity, self.memory)
         elif first == 0x72 and self.identity.enable_s7plus:
             response = s7comm_plus.handle(payload, self.identity)
         else:
