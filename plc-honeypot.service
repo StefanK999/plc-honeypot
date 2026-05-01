@@ -6,35 +6,70 @@
 #   sudo systemctl enable --now plc-honeypot
 #
 
-
 [Unit]
-Description=PLC Honeypot Siemens S7-1200
-Documentation=https://github.com/StefanK999/plc-honeypot.git
-After=network-online.target
+Description=PLC honeypot (configurable identity, S7comm/S7+/Modbus/DCP)
+Documentation=https://github.com/StefanK999/plc-honeypot
+After=network-online.target redis-server.service
 Wants=network-online.target
+# Redis è "Wants" e non "Requires" perché scan_logger ha già un fallback su
+# JSONL: se redis è giù, l'honeypot continua comunque a girare.
+Wants=redis-server.service
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/plc-honeypot
-ExecStart=/usr/bin/python3 /home/pi/plc-honeypot/plc_honeypot.py
+User=__USER__
+Group=__USER__
+WorkingDirectory=/home/__USER__/plc-honeypot
+
+# Identità del PLC virtuale: tutto da .env (vedi README).
+# Il dash davanti rende il file opzionale: se non c'è, valgono i default
+# in identity.py (DEMO).
+EnvironmentFile=-/home/__USER__/plc-honeypot/.env
+
+ExecStart=/usr/bin/python3 -u /home/__USER__/plc-honeypot/plc_honeypot.py
+
+# scan_log.jsonl viene scritto qui; tutto il resto è read-only.
+ReadWritePaths=/home/__USER__/plc-honeypot
+
+
+
+
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
-# Capability per bind a porte privilegiate (102, 502) e raw socket (DCP)
-# senza dover girare come root.
+# ── Capability per bind a porte privilegiate (102, 502) e raw socket
+#    L2 per PROFINET DCP. Niente root.
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
 
-# Hardening
+# ── Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/home/pi/plc-honeypot
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# AF_PACKET è OBBLIGATORIO per PROFINET DCP (raw L2).
+# Se in .env hai ENABLE_DCP=0 puoi togliere AF_PACKET per restringere ancora.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET
+
+# Log interno Python: line-buffered con ExecStart -u, niente accumulo in stdout.
 
 [Install]
 WantedBy=multi-user.target
